@@ -1,0 +1,449 @@
+{% extends "admin/index.html" %}
+{% load static %}
+
+{% block extrastyle %}
+<style>
+
+/* --- GLOBAL STYLE --- */
+.dashboard-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    padding: 1.5rem;
+    font-family: "Inter", sans-serif;
+    background-color: #f9fafb;
+}
+
+/* --- HEADER (Logo + Title) --- */
+.dashboard-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0.75rem 1rem;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+}
+
+.dashboard-header img {
+    height: 42px;
+    width: auto;
+    border-radius: 10px;
+    object-fit: contain;
+}
+
+.dashboard-header h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1f2937;
+    letter-spacing: -0.5px;
+}
+
+/* --- CARDS --- */
+.dashboard-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.5rem;
+}
+
+.card {
+    border-radius: 16px;
+    padding: 1.5rem;
+    color: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.card:hover { 
+    transform: translateY(-4px); 
+    box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+}
+
+.card::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(255,255,255,0.05);
+}
+
+.card h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+    opacity: 0.9;
+}
+
+.card p {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.card-bookings { background: linear-gradient(135deg, #10b981, #047857); }
+.card-users { background: linear-gradient(135deg, #3b82f6, #1e40af); }
+.card-earning { background: linear-gradient(135deg, #f59e0b, #b45309); }
+.card-rental { background: linear-gradient(135deg, #ec4899, #9d174d); }
+
+/* --- TABLE SECTION --- */
+.table-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    width: 100%;
+}
+.table_bp{
+    display:flex;
+    width: 100%;
+    gap:1rem;
+}
+.pay_book{
+    width: 100%;
+}
+
+.chart-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    overflow-x: auto;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    width: 100;
+}
+
+.chart-card h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    color: #111827;
+}
+
+.chart-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+}
+
+/* --- TABLE --- */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #ffffff;
+}
+
+table th, table td {
+    padding: 0.8rem 0.6rem;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+table th {
+    background-color: #f3f4f6;
+    font-weight: 600;
+    color: #374151;
+}
+
+
+
+table tbody tr {
+    transition: background-color 0.2s, box-shadow 0.2s, transform 0.2s;
+    cursor: pointer;
+}
+
+/* Odd row background */
+table tbody tr:nth-child(odd) {
+    background-color: #ffffff;
+}
+
+/* Even row background */
+table tbody tr:nth-child(even) {
+    background-color: #fafafaff;
+}
+
+/* Hover effect */
+table tbody tr:hover {
+      box-shadow: -1px 0px 7px -2px #0D9125;
+    transform: scale(1.001);
+}
+
+{% comment %} table tbody tr:hover {
+   box-shadow: -1px 0px 11px -2px rgba(0,0,0,0.5);
+-webkit-box-shadow: -1px 0px 11px -2px rgba(0,0,0,0.5);
+-moz-box-shadow: -1px 0px 11px -2px rgba(0,0,0,0.5);
+} {% endcomment %}
+
+/* --- BUTTONS --- */
+.btn-update, .btn-delete {
+    padding: 0.35rem 0.75rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    color: #fff;
+    margin-right: 6px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-update { background-color: #3b82f6; }
+.btn-update:hover { background-color: #2563eb; transform: scale(1.05); box-shadow: 0 3px 6px rgba(37,99,235,0.4); }
+
+.btn-delete { background-color: #ef4444; }
+.btn-delete:hover { background-color: #b91c1c; transform: scale(1.05); box-shadow: 0 3px 6px rgba(239,68,68,0.4); }
+
+/* Table cell er moddhe badge ke center korar jonno */
+table td {
+    vertical-align: middle; /* vertically center */
+}
+
+/* Optionally, horizontal center korte chaile */
+.status-badge {
+    color: white;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: capitalize;
+    display: inline-block;
+    box-shadow: 0 0 6px rgba(0,0,0,0.5);
+
+    /* Horizontal & vertical center within cell */
+    line-height: 1; 
+}
+
+/* Specific colors */
+.status-completed { background-color: #10b981; box-shadow: 0 0 6px #10b98180; }  /* Green */
+.status-pending { background-color: #f59e0b; box-shadow: 0 0 6px #f59e0b80; }    /* Yellow */
+.status-failed { background-color: #ef4444; box-shadow: 0 0 6px #ef444480; }     /* Red */
+
+@media (max-width: 768px) {
+    .table-section { grid-template-columns: 1fr; }
+    .dashboard-header h1 { font-size: 1.25rem; }    
+
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+
+    <!-- Dashboard Cards -->
+    <div class="dashboard-cards">
+        <div class="card card-bookings" onclick="document.getElementById('completed-bookings').scrollIntoView({behavior: 'smooth'});">
+            <h3>Total Bookings</h3>
+            <p>{{ total_bookings }}</p>
+        </div>
+        <div class="card card-users" onclick="document.getElementById('users-table').scrollIntoView({behavior: 'smooth'});">
+            <h3>Total Users</h3>
+            <p>{{ total_users }}</p>
+        </div>
+        <div class="card card-earning">
+            <h3>Total Earnings</h3>
+            <p>${{ total_earning }}</p>
+        </div>
+        <div class="card card-rental" onclick="document.getElementById('rentals-table').scrollIntoView({behavior: 'smooth'});">
+            <h3>Total Rentals</h3>
+            <p>{{ total_rental }}</p>
+        </div>
+    </div>
+
+    <!-- Tables Section -->
+    <div class="table-section">
+       <div class="table_bp">
+        <!-- Completed Bookings -->
+        <div class="chart-card pay_book" id="completed-bookings">
+            <h3>Completed Bookings</h3>
+            <table class="pay_book">
+                <thead>
+                    <tr>
+                        <th>Full Name</th>
+                        
+                        <th>Start Date</th>
+                        <th>End Date</th>
+                        <th>Status</th>
+                        <th>Total Price</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for booking in completed_bookings %}
+                    <tr onclick="window.location.href='{% url 'admin:booking_booking_change' booking.id %}'">
+
+                        <td>{{ booking.full_name }}</td>
+                       
+                        <td>{{ booking.start_date }}</td>
+                        <td>{{ booking.end_date }}</td>
+                         <td>  <span class="status-badge status-completed"> {{ booking.booking_status }}  </span ></td>
+                        <td>${{ booking.final_total }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5">No completed bookings</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% comment %} <!-- Users Table -->
+        <div class="chart-card" id="users-table">
+            <h3>Users</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Full Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Active</th>
+                        <th>Phone</th>
+                        <th>Created At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users_table %}
+                    <tr onclick="window.location.href='{% url 'user-detail' user.id %}'">
+                        <td>{{ user.full_name }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>{{ user.role }}</td>
+                        <td>{{ user.is_active }}</td>
+                        <td>{{ user.phone_number }}</td>
+                        <td>{{ user.created_at }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="6">No users</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Active Rentals -->
+        <div class="chart-card" id="rentals-table">
+            <h3>Active Rentals</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Full Name</th>
+                        <th>Shop Type</th>
+                        <th>Status</th>
+                        <th>Start Date</th>
+                        <th>End Date</th>
+                        <th>Start Time</th>
+                        <th>End Time</th>
+                        <th>Price</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rental in rentals_table %}
+                    <tr onclick="window.location.href='{% url 'booking-detail' rental.id %}'">
+                        <td>{{ rental.full_name }}</td>
+                        <td>{{ rental.shop_type }}</td>
+                        <td>{{ rental.booking_status }}</td>
+                        <td>{{ rental.start_date }}</td>
+                        <td>{{ rental.end_date }}</td>
+                        <td>{{ rental.start_time }}</td>
+                        <td>{{ rental.end_time }}</td>
+                        <td>${{ rental.final_total }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="8">No active rentals</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div> {% endcomment %}
+
+        <!-- Payments Table -->
+        <div class="chart-card pay_book">
+            <h3>Payments</h3>
+            <table class="pay_book">
+                <thead>
+                    <tr>
+                        <th>Booking</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                        <th>Method</th>
+                        <th>Created At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for payment in payments_table %}
+                   <tr onclick="window.location.href='{% url 'admin:booking_payment_change' payment.id %}'">
+
+                        <td>{{ payment.booking.full_name }}</td>
+                        <td>${{ payment.amount }}</td>
+                        
+                        <td>{{ payment.method }}</td>
+                        <td style="">
+    <span class="status-badge status-completed">{{ payment.status }}</span>
+</td>
+                        <td>{{ payment.created_at }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5">No payments</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+       </div>
+        
+        <!-- Notifications Table -->
+        <div class="chart-card" id="notifications-table" style="grid-column: 1 / -1;"> <!-- full width -->
+            <h3>Notifications</h3>
+            <table style="width:100%">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Title</th>
+                        <th>Message</th>
+                        <th>Read</th>
+                        <th>Created At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for notification in notifications_table %}
+                    <tr>
+                        <td>{{ notification.user.full_name }}</td>
+                        <td>{{ notification.title }}</td>
+                        <td>{{ notification.message }}</td>
+                        <td>
+                            {% if notification.is_read %}
+                                <span style="color:#10b981;font-weight:600;">Yes</span> <!-- green -->
+                            {% else %}
+                                <span style="color:#f59e0b;font-weight:600;">No</span> <!-- yellow -->
+                            {% endif %}
+                        </td>
+                        <td>{{ notification.created_at }}</td>
+                        <td style="display: flex; justify-content: flex-end; gap: 8px;">
+                            <a class="btn-update" href="{% url 'admin:notification_notification_change' notification.id %}">Update</a>
+                            <a class="btn-delete" href="{% url 'admin:notification_notification_delete' notification.id %}">Delete</a>
+                        </td>
+
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="6" style="text-align:center; font-style:italic;">No notifications</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+    <!-- Pagination Links -->
+    <div style="margin-top:10px; text-align:right;">
+        {% if notifications_table.has_previous %}
+            <a class="btn-info" href="?page={{ notifications_table.previous_page_number }}" style="padding:0.25rem 0.5rem; border-radius:6px; background:#3b82f6; color:#fff; margin-right:5px;">Previous</a>
+        {% endif %}
+        {% if notifications_table.has_next %}
+            <a class="btn-info" href="?page={{ notifications_table.next_page_number }}" style="padding:0.25rem 0.5rem; border-radius:6px; background:#3b82f6; color:#fff;">Next</a>
+        {% endif %}
+    </div>
+</div>
+
+
+
+
+
+    </div>
+
+</div>
+{% endblock %}

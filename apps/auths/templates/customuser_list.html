@@ -1,0 +1,124 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<h1>{{ section }}</h1>
+
+<style>
+/* General page and font */
+body {
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
+    background-color: #f9fafb;
+    color: #111827;
+}
+
+/* Table container */
+.admin-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 20px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+}
+
+/* Table header */
+.admin-table thead tr {
+    background-color: #f3f4f6;
+    color: #374151;
+    text-align: left;
+    font-weight: 600;
+}
+
+.admin-table th, .admin-table td {
+    padding: 14px 20px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+/* Rounded corners for header and footer */
+.admin-table thead tr th:first-child {
+    border-top-left-radius: 12px;
+}
+.admin-table thead tr th:last-child {
+    border-top-right-radius: 12px;
+}
+
+/* Zebra stripes for rows */
+.admin-table tbody tr:nth-child(even) {
+    background-color: #f9fafb;
+}
+
+/* Hover effect */
+.admin-table tbody tr:hover {
+    background-color: #eef2ff;
+    transition: background-color 0.2s ease;
+}
+
+/* Links styling */
+.admin-table a {
+    color: #6366f1; /* violet-500 */
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.admin-table a:hover {
+    text-decoration: underline;
+}
+
+/* Active / boolean cells */
+.admin-table td {
+    vertical-align: middle;
+    font-weight: 500;
+    color: #111827;
+}
+
+/* Empty cells display em dash */
+.admin-table td:empty::before {
+    content: "—";
+    color: #9ca3af;
+}
+
+/* Section header */
+h1 {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    color: #111827;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .admin-table th, .admin-table td {
+        padding: 10px 12px;
+    }
+    h1 {
+        font-size: 24px;
+    }
+}
+</style>
+
+<table class="admin-table">
+    <thead>
+        <tr>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Active</th>
+            <th>Joined</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for user in users %}
+        <tr>
+            <td><a href="{% url 'admin:auths_customuser_change' user.id %}">{{ user.email }}</a></td>
+            <td>{{ user.role|default:"—" }}</td>
+            <td>{{ user.is_active }}</td>
+            <td>{{ user.date_joined|date:"Y-m-d" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" style="text-align:center; color:#6b7280;">No users found.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

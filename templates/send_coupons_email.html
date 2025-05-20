@@ -1,0 +1,17 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<h2>📨 Send Selected Coupons</h2>
+
+<form method="post">{% csrf_token %}
+  {{ form.as_p }}
+  <p><strong>Selected Coupons:</strong></p>
+  <ul>
+  {% for c in coupons %}
+    <li>{{ c.name }} ({{ c.code }}) — expires {{ c.expiry_date }}</li>
+  {% endfor %}
+  </ul>
+  <button type="submit" name="apply" class="default">Send Email</button>
+</form>
+{% endblock %}

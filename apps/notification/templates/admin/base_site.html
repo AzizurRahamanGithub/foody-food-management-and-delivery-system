@@ -1,0 +1,25 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block nav-global %}
+<nav style="display:flex; justify-content:flex-end; gap:1rem; padding:0.5rem 1rem;">
+    <a href="{% url 'admin:index' %}">Dashboard</a>
+
+    <a href="{% url 'admin:notification_notification_changelist' %}" style="position:relative;">
+        🔔
+        {% if notification_unread_count > 0 %}
+            <span style="
+                position:absolute;
+                top:-5px;
+                right:-10px;
+                background:#ef4444;
+                color:white;
+                padding:2px 6px;
+                border-radius:50%;
+                font-size:0.75rem;">
+                {{ notification_unread_count }}
+            </span>
+        {% endif %}
+    </a>
+</nav>
+{% endblock %}

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Email Confirmation</title>
+    <style>
+      body,
+      table,
+      td,
+      div,
+      p {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Arial, sans-serif;
+        line-height: 1.6;
+      }
+      img {
+        border: 0;
+        display: block;
+      }
+      .flex-center {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .cta-button {
+        display: inline-block;
+        background-color: #084c61; /* Primary color */
+        color: #ffffff;
+        padding: 16px 32px;
+        text-decoration: none;
+        font-size: 16px;
+        font-weight: 600;
+        border-radius: 8px;
+        text-align: center;
+        transition: background-color 0.2s ease;
+      }
+      .cta-button:hover {
+        background-color: #063b4b; /* Darker shade on hover */
+      }
+      .icon-container {
+        display: inline-block;
+        background-color: #fbf5e0; /* Light background for icon */
+        border-radius: 50%;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+      .verification-code {
+        background-color: #fbf5e0; /* Light background for code box */
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 20px 0;
+        text-align: center;
+        font-family: "Courier New", monospace;
+        font-size: 24px;
+        font-weight: bold;
+        letter-spacing: 4px;
+        color: #084c61; /* Dark text color */
+      }
+    </style>
+  </head>
+  <body
+    style="
+      margin: 0;
+      min-height: 100vh;
+      padding: 0;
+      background: rgb(239, 253, 253); /* Gradient with your colors */
+      background-size: cover;
+      background-position: center;
+    "
+  >
+    <div style="width: 100%; padding: 40px 20px">
+      <div
+        style="
+          max-width: 600px;
+          width: 100%;
+          margin: 0 auto;
+          background-color: #ffffff;
+          border-radius: 12px;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+          overflow: hidden;
+        "
+      >
+        <!-- Header with Icon -->
+        <div class="flex-center" style="padding: 40px 40px 20px">
+          <div class="icon-container">
+            <div style="font-size: 32px; line-height: 1">✉️</div>
+          </div>
+        </div>
+
+        <!-- Main Heading -->
+        <div class="flex-center" style="padding: 0 40px 30px">
+          <h1
+            style="
+              color: #084c61;
+              font-size: 28px;
+              font-weight: 700;
+              margin: 0;
+              text-align: center;
+            "
+          >
+            Confirm Your Email
+          </h1>
+        </div>
+
+        <!-- Welcome Message -->
+        <div style="padding: 0 40px 20px">
+          <p
+            style="
+              color: #4b5563;
+              margin-bottom: 20px;
+              text-align: center;
+              font-size: 16px;
+            "
+          >
+            Thank you for signing up! We're excited to have you on board.
+          </p>
+          <p style="color: #4b5563; text-align: center; font-size: 16px">
+            To complete your registration and verify your email address, please
+            click the button below:
+          </p>
+        </div>
+
+        <!-- CTA Button -->
+        <div class="flex-center" style="padding: 0 40px 30px">
+          <a href="{{ confirm_link }}" class="cta-button"
+            >Verify Email Address</a
+          >
+        </div>
+
+        <!-- Alternative Link -->
+        <div style="padding: 0 40px 20px">
+          <p
+            style="
+              color: #6b7280;
+              text-align: center;
+              font-size: 14px;
+              margin-bottom: 10px;
+            "
+          >
+            If the button above doesn't work, copy and paste the following link
+            into your browser:
+          </p>
+          <p
+            style="
+              text-align: center;
+              word-break: break-all;
+              margin-bottom: 20px;
+            "
+          >
+            <a
+              href="{{ confirm_link }}"
+              style="
+                color: #084c61;
+                text-decoration: underline;
+                font-size: 14px;
+              "
+            >
+              {{ confirm_link }}
+            </a>
+          </p>
+          <p style="color: #6b7280; text-align: center; font-size: 14px">
+            Alternatively, you can use this verification code:
+          </p>
+        </div>
+
+        <!-- Verification Code -->
+        <div style="padding: 0 40px">
+          <div class="verification-code">{{ verification_code }}</div>
+        </div>
+
+        <!-- Expiry Notice -->
+        <div style="padding: 20px 40px">
+          <p
+            style="
+              color: #6b7280;
+              font-size: 14px;
+              margin-bottom: 15px;
+              text-align: center;
+            "
+          >
+            This verification link and code will expire in 24 hours.
+          </p>
+          <p style="color: #6b7280; font-size: 14px; text-align: center">
+            If you didn't create an account, please ignore this email.
+          </p>
+        </div>
+
+        <!-- Footer -->
+        <div
+          style="
+            padding: 30px 40px;
+            border-top: 1px solid #e5e7eb;
+            background-color: #f9fafb;
+          "
+        >
+          <p
+            style="
+              color: #9ca3af;
+              font-size: 12px;
+              text-align: center;
+              margin-bottom: 8px;
+            "
+          >
+            This is an automated message, please do not reply to this email.
+          </p>
+          <p
+            style="
+              color: #9ca3af;
+              font-size: 12px;
+              text-align: center;
+              margin: 0;
+            "
+          >
+            © 2025 All rights reserved.
+          </p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
