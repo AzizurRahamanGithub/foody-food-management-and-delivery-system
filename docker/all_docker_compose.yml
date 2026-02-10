@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: ${DB_CONTAINER_NAME:-postgres_db}
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mydb}
+      POSTGRES_USER: ${POSTGRES_USER:-myuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - django_network
+    restart: unless-stopped
+
+  web:
+    build: .
+    container_name: ${WEB_CONTAINER_NAME:-django_web}
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.production
+    command: >
+      gunicorn ${CONFIG}.wsgi:application --bind 0.0.0.0:8000 --timeout 180 --workers 3 --log-level info
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./.env
+    depends_on:
+      - db
+    networks:
+      - django_network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: redis_cache
+    networks:
+      - django_network
+    restart: unless-stopped
+
+  celery:
+    build: .
+    container_name: celery_worker
+    command: celery -A ${CONFIG} worker --loglevel=info
+    volumes:
+      - .:/app
+    depends_on:
+      - web
+      - redis
+    env_file:
+      - ./.env
+    networks:
+      - django_network
+    restart: unless-stopped
+
+  celerybeat:
+    build: .
+    container_name: celery_beat
+    command: celery -A ${CONFIG} beat --loglevel=info --schedule=/data/celerybeat-schedule
+    volumes:
+      - ./data:/data
+    depends_on:
+      - web
+      - redis
+    env_file:
+      - ./.env
+    networks:
+      - django_network
+    restart: unless-stopped
+
+
+networks:
+  django_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
+  data:

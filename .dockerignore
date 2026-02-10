@@ -1,0 +1,75 @@
+
+# Git files
+.git
+.gitignore
+README.md
+.gitattributes
+
+# Docker files
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Python cache files
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache
+.coverage
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Development files
+.env.local
+.env.development
+.env.test
+
+# Node modules (if any)
+node_modules/
+npm-debug.log
+
+# Static files (will be collected in container)
+staticfiles/
+static/
+
+# Media files during development
+media/
+
+# Database files
+
+.sqlite3
+*.db
+
+# Temporary files
+tmp/
+temp/
+
+# Documentation
+docs/
+*.md
+
+# Test files
+tests/
+test_*.py
+*_test.py

@@ -1,0 +1,1548 @@
+{
+  "info": {
+    "_postman_id": "c2f0a2c1-6f5a-4e7b-9d1a-tradingpips",
+    "name": "TradingPips Food Delivery API",
+    "description": "# TradingPips Food Delivery Backend API\n\nComplete collection for testing the delivery platform. 4 roles: **Customer**, **Merchant**, **Rider**, **Admin (staff)**.\n\n## Base URL\n`http://127.0.0.1:7777` (override the `baseUrl` collection variable if your server runs elsewhere).\n\n## Auth\n- Registration auto-creates the role profile (CustomerProfile / MerchantProfile / RiderProfile).\n- Login returns `data.access` (JWT). The collection saves tokens automatically as variables:\n  - `customerToken`, `merchantToken`, `riderToken`, `adminToken`.\n- Protected endpoints use header `Authorization: Bearer <token>`.\n- **Admin** endpoints (`/api/v1/admin-panel/*`) require a user with `is_staff=True` (create one via `python manage.py createsuperuser`).\n\n## Suggested flow (end-to-end)\n1. **Auth** folder → Register + Login for customer, merchant, rider, admin.\n2. **Admin Panel** → create a `DeliveryZone` + `PricingRule`, then approve the merchant (`merchants/{id}` action=approve).\n3. **Merchant** → setup profile, create category, item, addon group, offer.\n4. **Customer** → home, restaurant list, cart add, checkout (order id auto-saved).\n5. **Merchant** → order status: accept → preparing → ready.\n6. **Rider** → availability on, available orders (task id auto-saved), accept → pickup → deliver.\n7. **Customer** → track order, review. Earnings appear on rider side.\n8. **Card payment**: checkout with `payment_method: card`, then Paystack initialize → verify.\n\n## Response format\n- Success: `{ \"success\": true, \"status_code\": 200, \"message\": \"...\", \"data\": {...} }`\n- Error: `{ \"success\": false, \"status_code\": 400, \"message\": \"...\", \"error\": {...} }`\n\n## Notes / known caveats\n- All image/file fields are URL strings (send a public URL, not multipart).\n- `Addon` create: the `group` FK is not exposed by the serializer; associate addons to a group in Django admin, or use the `Menu` item's `addon-groups` flow once wired. Addons are read-only through this API for now.\n- Order status flow is enforced: pending → accepted → preparing → ready → picked_up → delivered.\n- Pickup code is generated at checkout; use the rider's `/tasks/` or admin to read it before confirming pickup.\n- Paystack verification requires a real `PAYSTACK_SECRET_KEY` in `.env`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register - Customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Rahim Customer\",\n  \"email\": \"customer@mail.com\",\n  \"password\": \"password123\",\n  \"confirm_password\": \"password123\",\n  \"role\": \"customer\",\n  \"phone_number\": \"01700000000\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register/"]
+            },
+            "description": "Register a new user. `role` ∈ `customer` | `merchant` | `rider`. Auto-creates the matching profile."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Register succeeds', () => { pm.response.to.have.status(201); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register - Merchant",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Rahim Merchant\",\n  \"email\": \"merchant@mail.com\",\n  \"password\": \"password123\",\n  \"confirm_password\": \"password123\",\n  \"role\": \"merchant\",\n  \"phone_number\": \"01700000001\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register/"]
+            }
+          }
+        },
+        {
+          "name": "Register - Rider",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Rahim Rider\",\n  \"email\": \"rider@mail.com\",\n  \"password\": \"password123\",\n  \"confirm_password\": \"password123\",\n  \"role\": \"rider\",\n  \"phone_number\": \"01700000002\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register/"]
+            }
+          }
+        },
+        {
+          "name": "Login - Customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"customer@mail.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login/"]
+            },
+            "description": "`identifier` accepts email or username. Response `data.access` is saved to `customerToken`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login succeeds', () => { pm.response.to.have.status(200); });",
+                  "const data = pm.response.json().data;",
+                  "if (data && data.access) { pm.collectionVariables.set('customerToken', data.access); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - Merchant",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"merchant@mail.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login/"]
+            },
+            "description": "Response `data.access` is saved to `merchantToken`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data && data.access) { pm.collectionVariables.set('merchantToken', data.access); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - Rider",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"rider@mail.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login/"]
+            },
+            "description": "Response `data.access` is saved to `riderToken`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data && data.access) { pm.collectionVariables.set('riderToken', data.access); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - Admin",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"admin\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login/"]
+            },
+            "description": "Use your staff user credentials. Response `data.access` is saved to `adminToken`. Create the admin with `python manage.py createsuperuser`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data && data.access) { pm.collectionVariables.set('adminToken', data.access); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/token/refresh/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "token", "refresh/"]
+            },
+            "description": "Set `refreshToken` manually from a login response, or grab the `refresh` value from any login."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data && data.access) { pm.collectionVariables.set('customerToken', data.access); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "My Profile (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/profile/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "profile/"]
+            }
+          }
+        },
+        {
+          "name": "My Profile (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Rahim Customer\",\n  \"phone_number\": \"01700000000\",\n  \"address\": \"Dhaka\",\n  \"photo\": \"https://example.com/avatar.png\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/profile/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "profile/"]
+            }
+          }
+        },
+        {
+          "name": "Password Change",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"old_password\": \"password123\",\n  \"new_password\": \"newpassword123\",\n  \"confirm_password\": \"newpassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/password-change/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "password-change/"]
+            }
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@mail.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/forgot-password/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "forgot-password/"]
+            }
+          }
+        },
+        {
+          "name": "Resend OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@mail.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/resend-otp/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "resend-otp/"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Merchant",
+      "item": [
+        {
+          "name": "Setup Profile (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{merchantToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_type\": \"restaurant\",\n  \"business_name\": \"Spice Garden\",\n  \"description\": \"Authentic Bangladeshi & Indian cuisine\",\n  \"phone\": \"01700000001\",\n  \"address\": \"House 5, Road 2, Gulshan-1\",\n  \"city\": \"Dhaka\",\n  \"latitude\": \"23.7925\",\n  \"longitude\": \"90.4078\",\n  \"is_open\": true,\n  \"opening_time\": \"09:00:00\",\n  \"closing_time\": \"23:00:00\",\n  \"delivery_time_min\": 30,\n  \"min_order_amount\": \"200.00\",\n  \"logo\": \"https://example.com/logo.png\",\n  \"cover_photo\": \"https://example.com/cover.png\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/profile/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "profile/"]
+            },
+            "description": "One-shot onboarding. `business_type`: restaurant | store. `opening_time`/`closing_time` format HH:MM:SS."
+          }
+        },
+        {
+          "name": "Get Profile (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{merchantToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/profile/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "profile/"]
+            },
+            "description": "Returns profile with `id` (used as `merchant_id`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data && data.id) { pm.collectionVariables.set('merchant_id', data.id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Profile (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{merchantToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_open\": true,\n  \"delivery_time_min\": 25\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/profile/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "profile/"]
+            }
+          }
+        },
+        {
+          "name": "Dashboard (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{merchantToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/dashboard/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "dashboard/"]
+            }
+          }
+        },
+        {
+          "name": "Create Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{merchantToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Biryani\",\n  \"image\": \"https://example.com/biryani.png\",\n  \"sort_order\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/categories/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "categories/"]
+            },
+            "description": "Category id is saved to `category_id`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data && data.id) { pm.collectionVariables.set('category_id', data.id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Categories (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{merchantToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/categories/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "categories/"]
+            }
+          }
+        },
+        {
+          "name": "Update Category (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{merchantToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Biryani & Khichuri\",\n  \"sort_order\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/categories/{{category_id}}/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "categories/{{category_id}}/"]
+            }
+          }
+        },
+        {
+          "name": "Create Menu Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{merchantToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"{{category_id}}\",\n  \"name\": \"Chicken Biryani\",\n  \"description\": \"Fragrant basmati rice with chicken\",\n  \"price\": \"320.00\",\n  \"discount_price\": \"280.00\",\n  \"image\": \"https://example.com/chicken-biryani.png\",\n  \"is_available\": true,\n  \"is_veg\": false,\n  \"preparation_time_min\": 20\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/items/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "items/"]
+            },
+            "description": "Item id is saved to `item_id`. `discount_price` optional (falls back to `price`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data && data.id) { pm.collectionVariables.set('item_id', data.id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Menu Items (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{merchantToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/items/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "items/"]
+            }
+          }
+        },
+        {
+          "name": "Update Menu Item (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{merchantToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": \"340.00\",\n  \"is_available\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/items/{{item_id}}/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "items/{{item_id}}/"]
+            }
+          }
+        },
+        {
+          "name": "Create Addon Group",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{merchantToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Extra Toppings\",\n  \"is_required\": false,\n  \"is_multiple_choice\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/addon-groups/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "addon-groups/"]
+            }
+          }
+        },
+        {
+          "name": "List Addon Groups (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{merchantToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/addon-groups/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "addon-groups/"]
+            }
+          }
+        },
+        {
+          "name": "List Addons (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{merchantToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/addons/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "addons/"]
+            },
+            "description": "Create addons only via Django admin for now (the `group` FK is not exposed by the serializer)."
+          }
+        },
+        {
+          "name": "Create Offer",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{merchantToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"10% Off\",\n  \"description\": \"Flat 10% off on all items\",\n  \"image\": \"https://example.com/offer.png\",\n  \"discount_type\": \"percent\",\n  \"discount_value\": \"10.00\",\n  \"max_discount\": \"50.00\",\n  \"min_order_amount\": \"200.00\",\n  \"valid_from\": \"2026-08-01T00:00:00Z\",\n  \"valid_to\": \"2026-12-31T23:59:59Z\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/offers/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "offers/"]
+            },
+            "description": "`discount_type`: percent | flat. Offer id is saved to `offer_id`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data && data.id) { pm.collectionVariables.set('offer_id', data.id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Orders List (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{merchantToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/orders/?status=pending",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "orders/"],
+              "query": [{ "key": "status", "value": "pending", "description": "optional filter" }]
+            }
+          }
+        },
+        {
+          "name": "Order Detail (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{merchantToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/orders/{{order_id}}/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "orders/{{order_id}}/"]
+            }
+          }
+        },
+        {
+          "name": "Order Status (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{merchantToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"accept\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/merchant/orders/{{order_id}}/status/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "merchant", "orders/{{order_id}}", "status/"]
+            },
+            "description": "`action`: accept | reject | preparing | ready. Must run in order: accept → preparing → ready."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Customer",
+      "item": [
+        {
+          "name": "Profile (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/profile/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "profile/"]
+            }
+          }
+        },
+        {
+          "name": "Profile (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Rahim Customer\",\n  \"phone\": \"01700000000\",\n  \"avatar\": \"https://example.com/avatar.png\",\n  \"default_latitude\": \"23.7800\",\n  \"default_longitude\": \"90.4150\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/profile/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "profile/"]
+            }
+          }
+        },
+        {
+          "name": "Home (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/home/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "home/"]
+            },
+            "description": "Only shows merchants with `verification_status=approved`."
+          }
+        },
+        {
+          "name": "Restaurants List (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/restaurants/?q=&type=restaurant&category=",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "restaurants/"],
+              "query": [
+                { "key": "q", "value": "", "description": "search by name/address" },
+                { "key": "type", "value": "restaurant", "description": "restaurant | store" },
+                { "key": "category", "value": "", "description": "category id filter" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Restaurant Detail (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/restaurants/{{merchant_id}}/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "restaurants/{{merchant_id}}/"]
+            }
+          }
+        },
+        {
+          "name": "Menu Item Detail (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/items/{{item_id}}/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "items/{{item_id}}/"]
+            }
+          }
+        },
+        {
+          "name": "Search (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/search/?q=biryani",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "search/"],
+              "query": [{ "key": "q", "value": "biryani", "description": "required" }]
+            }
+          }
+        },
+        {
+          "name": "Create Saved Address",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Home\",\n  \"address\": \"House 12, Road 7, Gulshan-1\",\n  \"latitude\": \"23.7800\",\n  \"longitude\": \"90.4150\",\n  \"is_default\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/addresses/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "addresses/"]
+            }
+          }
+        },
+        {
+          "name": "List Saved Addresses (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/addresses/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "addresses/"]
+            }
+          }
+        },
+        {
+          "name": "Create Payment Method",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method_type\": \"card\",\n  \"card_holder\": \"Rahim Customer\",\n  \"card_last4\": \"4242\",\n  \"expiry_month\": 12,\n  \"expiry_year\": 2028,\n  \"is_default\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/payment-methods/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "payment-methods/"]
+            },
+            "description": "`method_type`: cod | card | wallet."
+          }
+        },
+        {
+          "name": "View Cart (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/cart/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "cart/"]
+            }
+          }
+        },
+        {
+          "name": "Add to Cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item_id\": \"{{item_id}}\",\n  \"quantity\": 2,\n  \"addon_ids\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/cart/add/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "cart", "add/"]
+            },
+            "description": "`addon_ids` optional array of addon ids."
+          }
+        },
+        {
+          "name": "Update Cart Item (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 3\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/cart/update/{{cart_item_id}}/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "cart", "update/{{cart_item_id}}/"]
+            },
+            "description": "Get `cart_item_id` from the View Cart response (`data.items[0].id`)."
+          }
+        },
+        {
+          "name": "Remove Cart Item (DELETE)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/cart/remove/{{cart_item_id}}/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "cart", "remove/{{cart_item_id}}/"]
+            }
+          }
+        },
+        {
+          "name": "Clear Cart (DELETE)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/cart/clear/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "cart", "clear/"]
+            }
+          }
+        },
+        {
+          "name": "Checkout (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchant_id\": \"{{merchant_id}}\",\n  \"delivery_address\": \"House 12, Road 7, Gulshan-1\",\n  \"delivery_latitude\": \"23.7800\",\n  \"delivery_longitude\": \"90.4150\",\n  \"payment_method\": \"cod\",\n  \"offer_id\": \"{{offer_id}}\",\n  \"note\": \"Please ring the bell\",\n  \"is_scheduled\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/checkout/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "checkout/"]
+            },
+            "description": "`payment_method`: cod | card | wallet. For card use `card` then call Paystack initialize. Order id saved to `order_id`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data && data.id) { pm.collectionVariables.set('order_id', data.id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "My Orders (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/orders/?status=",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "orders/"],
+              "query": [{ "key": "status", "value": "", "description": "optional status filter" }]
+            }
+          }
+        },
+        {
+          "name": "Order Detail (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/orders/{{order_id}}/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "orders/{{order_id}}/"]
+            }
+          }
+        },
+        {
+          "name": "Cancel Order (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Changed my mind\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/orders/{{order_id}}/cancel/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "orders/{{order_id}}", "cancel/"]
+            },
+            "description": "Only allowed while order is `pending` or `accepted`."
+          }
+        },
+        {
+          "name": "Track Order (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/orders/{{order_id}}/track/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "orders/{{order_id}}", "track/"]
+            },
+            "description": "Includes `rider_location` (lat/lng) when a rider is assigned."
+          }
+        },
+        {
+          "name": "Review Order (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"{{order_id}}\",\n  \"rating\": 5,\n  \"rider_rating\": 5,\n  \"comment\": \"Great food and fast delivery!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/review/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "review/"]
+            },
+            "description": "Only delivered orders. `rider_rating` optional."
+          }
+        },
+        {
+          "name": "Paystack Initialize (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"{{order_id}}\",\n  \"callback_url\": \"{{baseUrl}}/api/v1/customer/payment/verify/\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/payment/initialize/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "payment", "initialize/"]
+            },
+            "description": "Only works for orders with `payment_method=card`. Returns `authorization_url` (open it to pay) + `reference` (saved). Requires `PAYSTACK_SECRET_KEY` in `.env`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data && data.reference) { pm.collectionVariables.set('reference', data.reference); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Paystack Verify (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reference\": \"{{reference}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/payment/verify/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customer", "payment", "verify/"]
+            },
+            "description": "Verify after the user completes payment on the Paystack page. Marks order `payment_status=paid`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rider",
+      "item": [
+        {
+          "name": "Profile (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{riderToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/profile/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "profile/"]
+            }
+          }
+        },
+        {
+          "name": "Update Profile (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{riderToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"01700000002\",\n  \"avatar\": \"https://example.com/rider.png\",\n  \"city\": \"Dhaka\",\n  \"preferred_city\": \"Dhaka\",\n  \"language\": \"en\",\n  \"vehicle_type\": \"bike\",\n  \"vehicle_model\": \"Yamaha FZS\",\n  \"vehicle_number\": \"DHAKA-12-3456\",\n  \"current_latitude\": \"23.8103\",\n  \"current_longitude\": \"90.4125\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/profile/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "profile/"]
+            },
+            "description": "`vehicle_type`: bike | car | bicycle."
+          }
+        },
+        {
+          "name": "Set Availability (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{riderToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_online\": true,\n  \"latitude\": \"23.8103\",\n  \"longitude\": \"90.4125\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/availability/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "availability/"]
+            }
+          }
+        },
+        {
+          "name": "Upload Document (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{riderToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doc_type\": \"driving_license\",\n  \"file\": \"https://example.com/license.jpg\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/documents/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "documents/"]
+            },
+            "description": "`doc_type`: national_id | driving_license | vehicle_reg. Document id saved to `doc_id`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data && data.id) { pm.collectionVariables.set('doc_id', data.id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Documents (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{riderToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/documents/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "documents/"]
+            }
+          }
+        },
+        {
+          "name": "Delete Document (DELETE)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{riderToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/documents/{{doc_id}}/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "documents/{{doc_id}}/"]
+            }
+          }
+        },
+        {
+          "name": "Save Bank Info (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{riderToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bank_name\": \"bKash\",\n  \"account_holder\": \"Rahim Rider\",\n  \"account_number\": \"01700000002\",\n  \"branch\": \"Gulshan\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/bank/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "bank/"]
+            }
+          }
+        },
+        {
+          "name": "Available Orders (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{riderToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/orders/available/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "orders", "available/"]
+            },
+            "description": "Shows orders in `ready` state. First item's `task_id` saved to `task_id`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (Array.isArray(data) && data.length > 0 && data[0].task_id) { pm.collectionVariables.set('task_id', data[0].task_id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "My Delivery Tasks (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{riderToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/tasks/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "tasks/"]
+            },
+            "description": "Shows the `pickup_code` for your accepted task."
+          }
+        },
+        {
+          "name": "Accept Task (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{riderToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/tasks/{{task_id}}/accept/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "tasks/{{task_id}}", "accept/"]
+            }
+          }
+        },
+        {
+          "name": "Confirm Pickup (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{riderToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pickup_code\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/tasks/{{task_id}}/pickup/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "tasks/{{task_id}}", "pickup/"]
+            },
+            "description": "Use the actual `pickup_code` from your delivery task (My Delivery Tasks response)."
+          }
+        },
+        {
+          "name": "Mark Delivered (POST)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{riderToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/tasks/{{task_id}}/deliver/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "tasks/{{task_id}}", "deliver/"]
+            },
+            "description": "Creates an Earning (delivery fee) automatically."
+          }
+        },
+        {
+          "name": "Earnings Overview (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{riderToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/earnings/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "earnings/"]
+            }
+          }
+        },
+        {
+          "name": "Earnings History (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{riderToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rider/earnings/history/?period=all",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rider", "earnings", "history/"],
+              "query": [{ "key": "period", "value": "all", "description": "day | week | month | all" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Panel",
+      "item": [
+        {
+          "name": "Overview (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/overview/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "overview/"]
+            },
+            "description": "Requires a staff user token."
+          }
+        },
+        {
+          "name": "Orders (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/orders/?status=&from=&to=",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "orders/"],
+              "query": [
+                { "key": "status", "value": "" },
+                { "key": "from", "value": "", "description": "YYYY-MM-DD" },
+                { "key": "to", "value": "", "description": "YYYY-MM-DD" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Order Detail (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/orders/{{order_id}}/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "orders/{{order_id}}/"]
+            }
+          }
+        },
+        {
+          "name": "Merchants (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/merchants/?status=pending",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "merchants/"],
+              "query": [{ "key": "status", "value": "pending", "description": "pending | approved | rejected" }]
+            },
+            "description": "Lists all merchants. Grab the merchant id from `data[0].id` and set `merchant_id` if needed."
+          }
+        },
+        {
+          "name": "Approve / Reject Merchant",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"approve\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/merchants/{{merchant_id}}/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "merchants/{{merchant_id}}/"]
+            },
+            "description": "`action`: approve | reject. Required before the merchant appears in customer home/restaurants."
+          }
+        },
+        {
+          "name": "Riders (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/riders/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "riders/"]
+            }
+          }
+        },
+        {
+          "name": "Verify Rider Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"verify\",\n  \"document_id\": \"{{doc_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/riders/{{rider_profile_id}}/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "riders/{{rider_profile_id}}/"]
+            },
+            "description": "`action`: verify (needs `document_id`) | reject (needs `document_id` + `reason`) | approve | reject. Requires the rider profile id (from Riders list)."
+          }
+        },
+        {
+          "name": "Customers (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/customers/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "customers/"]
+            }
+          }
+        },
+        {
+          "name": "Toggle Customer Active",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/customers/{{customer_user_id}}/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "customers/{{customer_user_id}}/"]
+            },
+            "description": "Uses the CustomUser id (from Customers list `data[0].id`)."
+          }
+        },
+        {
+          "name": "Analytics (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/analytics/?days=7",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "analytics/"],
+              "query": [{ "key": "days", "value": "7" }]
+            }
+          }
+        },
+        {
+          "name": "Reports (GET)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/reports/?type=summary",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "reports/"],
+              "query": [{ "key": "type", "value": "summary" }]
+            }
+          }
+        },
+        {
+          "name": "Add Restaurant (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"merchant@mail.com\",\n  \"business_type\": \"restaurant\",\n  \"business_name\": \"Spice Garden\",\n  \"address\": \"Gulshan-1, Dhaka\",\n  \"city\": \"Dhaka\",\n  \"phone\": \"01700000001\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/add-restaurant/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "add-restaurant/"]
+            },
+            "description": "User must already exist (registered as merchant). Auto-approves."
+          }
+        },
+        {
+          "name": "Invite Rider (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"rider@mail.com\",\n  \"city\": \"Dhaka\",\n  \"vehicle_type\": \"bike\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/invite-rider/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "invite-rider/"]
+            },
+            "description": "User must already exist (registered as rider)."
+          }
+        },
+        {
+          "name": "Create Delivery Zone",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dhaka North\",\n  \"city\": \"Dhaka\",\n  \"area\": \"Gulshan\",\n  \"latitude\": \"23.7925\",\n  \"longitude\": \"90.4078\",\n  \"radius_km\": \"10.00\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/delivery-zones/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "delivery-zones/"]
+            },
+            "description": "Zone id saved to `zone_id`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data && data.id) { pm.collectionVariables.set('zone_id', data.id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Pricing Rule",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"zone\": \"{{zone_id}}\",\n  \"base_fare\": \"30.00\",\n  \"per_km\": \"12.00\",\n  \"min_fare\": \"30.00\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin-panel/pricing-rules/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin-panel", "pricing-rules/"]
+            },
+            "description": "The first active rule's `base_fare` is used as the checkout delivery fee."
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:7777", "type": "string" },
+    { "key": "customerToken", "value": "", "type": "string" },
+    { "key": "merchantToken", "value": "", "type": "string" },
+    { "key": "riderToken", "value": "", "type": "string" },
+    { "key": "adminToken", "value": "", "type": "string" },
+    { "key": "refreshToken", "value": "", "type": "string" },
+    { "key": "merchant_id", "value": "", "type": "string" },
+    { "key": "category_id", "value": "", "type": "string" },
+    { "key": "item_id", "value": "", "type": "string" },
+    { "key": "offer_id", "value": "", "type": "string" },
+    { "key": "order_id", "value": "", "type": "string" },
+    { "key": "cart_item_id", "value": "", "type": "string" },
+    { "key": "task_id", "value": "", "type": "string" },
+    { "key": "doc_id", "value": "", "type": "string" },
+    { "key": "rider_profile_id", "value": "", "type": "string" },
+    { "key": "customer_user_id", "value": "", "type": "string" },
+    { "key": "zone_id", "value": "", "type": "string" },
+    { "key": "reference", "value": "", "type": "string" }
+  ]
+}

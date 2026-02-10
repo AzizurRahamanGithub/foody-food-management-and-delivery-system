@@ -1,0 +1,15 @@
+
+.venv/
+venv/
+.myenv/
+*__pycache__/
+*.pyc
+.pyc
+
+*.png
+*.jpg
+test.py
+.vercel
+/node_modules
+staticfiles/
+.ruff_cache
