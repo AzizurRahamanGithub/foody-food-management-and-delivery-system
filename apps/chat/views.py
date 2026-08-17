@@ -1,17 +1,91 @@
 from ..core.response import success_response, failure_response
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from .models import ChatMessage
-from .serializers import ChatMessageSerializer, UserSerializer, ChatUserSerializer
+from .models import SupportTicket, ChatMessage
+from .serializers import (ChatMessageSerializer, UserSerializer,
+                          ChatUserSerializer, SupportTicketSerializer,
+                          SupportTicketCreateSerializer)
+
 
 User = get_user_model()
 
 
-# CRUD for ChatMessage
+class SupportTicketView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        tickets = SupportTicket.objects.filter(user=request.user)
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            tickets = tickets.filter(status=status_filter)
+        return success_response(
+            "Support tickets",
+            SupportTicketSerializer(tickets, many=True).data)
+
+    def post(self, request):
+        serializer = SupportTicketCreateSerializer(
+            data=request.data, context={'request': request})
+        if serializer.is_valid():
+            ticket = serializer.save()
+            return success_response(
+                "Support ticket created",
+                SupportTicketSerializer(ticket).data,
+                status.HTTP_201_CREATED)
+        return failure_response("Invalid data", serializer.errors)
+
+
+class SupportTicketDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        ticket = get_object_or_404(
+            SupportTicket, pk=pk, user=request.user)
+        return success_response(
+            "Ticket details",
+            SupportTicketSerializer(ticket).data)
+
+
+class SupportTicketMessagesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        ticket = get_object_or_404(
+            SupportTicket, pk=pk, user=request.user)
+        messages = ticket.messages.order_by('timestamp')
+        return success_response(
+            "Ticket messages",
+            ChatMessageSerializer(messages, many=True).data)
+
+    def post(self, request, pk):
+        ticket = get_object_or_404(
+            SupportTicket, pk=pk, user=request.user)
+        if ticket.status == 'closed':
+            return failure_response("Ticket is closed")
+        message_text = request.data.get('message')
+        if not message_text:
+            return failure_response("Message is required")
+        receiver = ticket.assigned_to or User.objects.filter(
+            is_staff=True).first()
+        if not receiver:
+            return failure_response("No support staff available")
+        msg = ChatMessage.objects.create(
+            sender=request.user,
+            receiver=receiver,
+            ticket=ticket,
+            message=message_text)
+        return success_response(
+            "Message sent",
+            ChatMessageSerializer(msg).data,
+            status.HTTP_201_CREATED)
+
+
+# --- Existing views below ---
+
 class ChatMessageViewSet(viewsets.ModelViewSet):
     queryset = ChatMessage.objects.all().order_by("timestamp")
     serializer_class = ChatMessageSerializer
@@ -21,7 +95,6 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
         serializer.save(sender=self.request.user)
 
 
-# Chat history with another user
 class ChatMessageListView(generics.ListAPIView):
     serializer_class = ChatMessageSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -34,14 +107,14 @@ class ChatMessageListView(generics.ListAPIView):
             Q(sender=user, receiver_id=other_user_id) |
             Q(sender_id=other_user_id, receiver=user)
         ).order_by("-timestamp")
-    
+
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
-        return success_response("Chat history fetched successfully", serializer.data)
+        return success_response(
+            "Chat history fetched successfully", serializer.data)
 
 
-# Mark all unread messages as read for current user
 class IsReadMessageView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -55,8 +128,6 @@ class IsReadMessageView(APIView):
             "message": f"{count} messages marked as read."
         }, status=status.HTTP_200_OK)
 
-
-# List of users the current user has chatted with
 
 class MyChatUserListView(generics.ListAPIView):
     serializer_class = ChatUserSerializer

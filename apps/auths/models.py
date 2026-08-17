@@ -18,13 +18,14 @@ class Role(models.TextChoices):
 
 
 class CustomUser(AbstractUser):
-    email = models.EmailField(unique=True)
+    email = models.EmailField(unique=True, null=True, blank=True)
     is_active= models.BooleanField(default=True)
     role = models.CharField(max_length=10, choices=Role.choices,
                             default=Role.LEARNER, null=True, blank=True)
     address = models.CharField(max_length=255, null=True, blank=True)
     phone_number = models.CharField(
-        max_length=15, null=True, blank=True)
+        max_length=15, unique=True, null=True, blank=True)
+    is_phone_verified = models.BooleanField(default=False)
     photo = models.URLField(null=True, blank=True)
     full_name = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True)
@@ -34,7 +35,7 @@ class CustomUser(AbstractUser):
     REQUIRED_FIELDS = ['username']
 
     def __str__(self):
-        return self.email
+        return self.full_name or self.phone_number or self.email or self.username
 
     class Meta:
         verbose_name = 'User'
@@ -42,14 +43,45 @@ class CustomUser(AbstractUser):
         indexes = [
             models.Index(fields=['email'], name='email_idx'),
             models.Index(fields=['username'], name='username_idx'),
+            models.Index(fields=['phone_number'], name='phone_number_idx'),
             models.Index(fields=['role'], name='role_idx'),
             models.Index(fields=['created_at'], name='created_at_idx'),
         ]
 
 
 class CustomUserAdmin(ImportExportActionModelAdmin):
-    list_display = ('username', 'email', 'role', 'is_active', 'created_at')
-    search_fields = ('username', 'email', 'full_name')
+    list_display = ('username', 'email', 'phone_number', 'role', 'is_phone_verified', 'is_active', 'created_at')
+    search_fields = ('username', 'email', 'phone_number', 'full_name')
+
+
+class PhoneVerification(models.Model):
+    phone_number = models.CharField(max_length=15, unique=True)
+    otp = models.CharField(max_length=6)
+    is_verified = models.BooleanField(default=False)
+    attempts = models.IntegerField(default=0)
+    otp_created_at = models.DateTimeField(auto_now_add=True)
+
+    OTP_EXPIRY_MINUTES = 10
+
+    def is_otp_expired(self):
+        if self.otp_created_at:
+            return timezone.now() > self.otp_created_at + timedelta(minutes=self.OTP_EXPIRY_MINUTES)
+        return True
+
+    def can_resend(self):
+        if self.otp_created_at:
+            return timezone.now() > self.otp_created_at + timedelta(seconds=60)
+        return True
+
+    def generate_otp(self):
+        self.otp = ''.join(random.choices(string.digits, k=6))
+        self.attempts = 0
+        self.is_verified = False
+        self.otp_created_at = timezone.now()
+        return self.otp
+
+    def __str__(self):
+        return f"{self.phone_number} - {'verified' if self.is_verified else 'pending'}"
 
 class UserProfile(models.Model):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)

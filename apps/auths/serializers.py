@@ -1,6 +1,6 @@
 from django.db.models import Avg, Count
 from datetime import datetime, timedelta
-from .models import CustomUser, ContactMessage, HelpUsImprove
+from .models import CustomUser, ContactMessage, HelpUsImprove, PhoneVerification
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
@@ -9,7 +9,9 @@ User = get_user_model()
 
 class UserRegisterSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(write_only=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
     password = serializers.CharField(write_only=True, min_length=6)
+    phone_number = serializers.CharField(max_length=15)
     role = serializers.ChoiceField(
         choices=['customer', 'merchant', 'rider'], default='customer')
 
@@ -23,12 +25,20 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             "phone_number",
         ]
 
-    def validate(self, data):
-        # Check if email already exists
-        if CustomUser.objects.filter(email=data["email"]).exists():
-            raise serializers.ValidationError({"email": "Email already exists."})
+    def validate_email(self, value):
+        if value:
+            value = value.strip().lower()
+            if CustomUser.objects.filter(email=value).exists():
+                raise serializers.ValidationError("Email already exists.")
+        return value or None
 
-        return data
+    def validate_phone_number(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Phone number is required.")
+        if CustomUser.objects.filter(phone_number=value).exists():
+            raise serializers.ValidationError("This phone number is already registered.")
+        return value
 
     def create(self, validated_data):
         full_name = validated_data.pop("full_name")
@@ -60,6 +70,12 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.role = role
         user.is_active = True
+
+        phone_number = user.phone_number
+        if phone_number and PhoneVerification.objects.filter(
+                phone_number=phone_number, is_verified=True).exists():
+            user.is_phone_verified = True
+
         user.save()
 
         # Create role-specific profile
@@ -85,12 +101,33 @@ class CustomUserAllSerializer(serializers.ModelSerializer):
         
 
 class UserSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(required=False, allow_blank=True)
 
     class Meta:
         model = CustomUser
         fields = ('id', 'full_name', 'email', 'is_active',
                   'role', 'address', 'phone_number', 'photo', 'created_at')
-        read_only_fields = ('id', 'username', 'email', 'is_active',)
+        read_only_fields = ('id', 'username', 'is_active',)
+
+    def validate_email(self, value):
+        if value:
+            value = value.strip().lower()
+            existing = CustomUser.objects.filter(email=value)
+            if self.instance:
+                existing = existing.exclude(pk=self.instance.pk)
+            if existing.exists():
+                raise serializers.ValidationError("Email already exists.")
+        return value or None
+
+    def validate_phone_number(self, value):
+        if value:
+            value = value.strip()
+            existing = CustomUser.objects.filter(phone_number=value)
+            if self.instance:
+                existing = existing.exclude(pk=self.instance.pk)
+            if existing.exists():
+                raise serializers.ValidationError("This phone number is already registered.")
+        return value or None
 
     def create(self, validated_data):
         return User.objects.create(**validated_data)
@@ -105,25 +142,25 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
     def validate(self, data):
-        identifier = data['identifier']
+        identifier = str(data['identifier']).strip()
         password = data['password']
 
-        # Find user either by username or email
-        user = None
-        if '@' in identifier and '.' in identifier:
-            user = User.objects.filter(email=identifier).first()
-        else:
-            user = User.objects.filter(username=identifier).first()
+        # Find user by phone number, email or username
+        user = (
+            User.objects.filter(phone_number=identifier).first()
+            or User.objects.filter(email__iexact=identifier).first()
+            or User.objects.filter(username=identifier).first()
+        )
 
         # If the user is not found, raise an error for identifier
         if not user:
             raise serializers.ValidationError(
-                {"identifier": "Invalid credentials. Please check your email or username."})
+                {"identifier": "Invalid credentials. Please check your phone number, email or username."})
 
         # Check if the user is active
         if not user.is_active:
             raise serializers.ValidationError(
-                {"identifier": "Your account is not active. Please verify your email."})
+                {"identifier": "Your account is not active. Please verify your phone number or email."})
 
         # Check password manually and raise an error for password
         if not user.check_password(password):
@@ -135,9 +172,53 @@ class LoginSerializer(serializers.Serializer):
 
         if not user:
             raise serializers.ValidationError(
-                "Invalid credentials. Please check your email or password.")
+                "Invalid credentials. Please check your phone number, email or password.")
 
         return {"user": user}
+
+
+class SendPhoneOTPSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(max_length=15)
+
+    def validate_phone_number(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Phone number is required.")
+        return value
+
+
+class VerifyPhoneOTPSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(max_length=15)
+    otp = serializers.CharField(max_length=6)
+
+    def validate_phone_number(self, value):
+        return value.strip()
+
+    def validate(self, data):
+        try:
+            verification = PhoneVerification.objects.get(
+                phone_number=data['phone_number'])
+        except PhoneVerification.DoesNotExist:
+            raise serializers.ValidationError(
+                {"phone_number": "No OTP has been sent to this phone number. Please request a new OTP."})
+
+        if verification.is_otp_expired():
+            raise serializers.ValidationError(
+                {"otp": "OTP expired. Please request a new one."})
+
+        if verification.attempts >= 5:
+            raise serializers.ValidationError(
+                {"otp": "Too many failed attempts. Please request a new OTP."})
+
+        if verification.otp != data['otp']:
+            verification.attempts += 1
+            verification.save(update_fields=['attempts'])
+            raise serializers.ValidationError(
+                {"otp": "Invalid OTP."})
+
+        verification.is_verified = True
+        verification.save(update_fields=['is_verified'])
+        return data
 
 
 class TokenSerializer(serializers.Serializer):
@@ -146,13 +227,58 @@ class TokenSerializer(serializers.Serializer):
 
 
 class ForgotPasswordSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+    email = serializers.EmailField(required=False, allow_blank=True)
+    phone_number = serializers.CharField(required=False, allow_blank=True, max_length=15)
 
-    def validate_email(self, value):
-        if not User.objects.filter(email=value).exists():
+    def validate(self, data):
+        email = (data.get('email') or '').strip()
+        phone_number = (data.get('phone_number') or '').strip()
+        if not email and not phone_number:
             raise serializers.ValidationError(
-                "User with this email does not exist.")
-        return value
+                {"identifier": "Either email or phone_number is required."})
+        if email and phone_number:
+            raise serializers.ValidationError(
+                {"identifier": "Provide only one of email or phone_number."})
+        if email and not User.objects.filter(email__iexact=email).exists():
+            raise serializers.ValidationError(
+                {"email": "User with this email does not exist."})
+        if phone_number and not User.objects.filter(phone_number=phone_number).exists():
+            raise serializers.ValidationError(
+                {"phone_number": "User with this phone number does not exist."})
+        return data
+
+
+class VerifyResetOTPSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(max_length=15)
+    otp = serializers.CharField(max_length=6)
+    new_password = serializers.CharField(min_length=6, write_only=True)
+    confirm_password = serializers.CharField(min_length=6, write_only=True)
+
+    def validate(self, data):
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError("Passwords do not match.")
+
+        try:
+            verification = PhoneVerification.objects.get(
+                phone_number=data['phone_number'])
+        except PhoneVerification.DoesNotExist:
+            raise serializers.ValidationError(
+                {"otp": "No OTP has been sent to this phone number. Please request a new one."})
+
+        if verification.is_otp_expired():
+            raise serializers.ValidationError(
+                {"otp": "OTP expired. Please request a new one."})
+
+        if verification.attempts >= 5:
+            raise serializers.ValidationError(
+                {"otp": "Too many failed attempts. Please request a new OTP."})
+
+        if verification.otp != data['otp']:
+            verification.attempts += 1
+            verification.save(update_fields=['attempts'])
+            raise serializers.ValidationError({"otp": "Invalid OTP."})
+
+        return data
 
 
 class PasswordChangeSerializer(serializers.Serializer):

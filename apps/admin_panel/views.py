@@ -8,15 +8,42 @@ from django.utils import timezone
 from apps.core.response import success_response, failure_response
 from apps.core.crud import DynamicModelViewSet
 from apps.auths.models import CustomUser
-from apps.merchant.models import MerchantProfile, Category, MenuItem, Offer
+from apps.merchant.models import (MerchantProfile, GlobalCategory,
+                                  MerchantVerification, Category,
+                                  MenuItem, Offer)
 from apps.rider.models import RiderProfile, RiderDocument
 from apps.orders.models import Order, DeliveryTask, Review
 from .models import DeliveryZone, PricingRule
 from .serializers import DeliveryZoneSerializer, PricingRuleSerializer
+from apps.merchant.serializers import (GlobalCategorySerializer,
+                                       MerchantVerificationAdminSerializer,
+                                       MerchantProfileSerializer)
 
 
 class AdminPermission(IsAdminUser):
     pass
+
+
+class GlobalCategoryViewSet(DynamicModelViewSet):
+    serializer_class = GlobalCategorySerializer
+    permission_classes = [IsAdminUser]
+
+    def __init__(self, *args, **kwargs):
+        kwargs['model'] = GlobalCategory
+        kwargs['serializer_class'] = GlobalCategorySerializer
+        kwargs['item_name'] = 'GlobalCategory'
+        super().__init__(*args, **kwargs)
+
+    def get_queryset(self):
+        qs = GlobalCategory.objects.all()
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(name__icontains=search)
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            qs = qs.filter(
+                is_active=is_active.lower() in ('true', '1', 'yes'))
+        return qs
 
 
 class DeliveryZoneViewSet(DynamicModelViewSet):
@@ -55,7 +82,8 @@ class AdminOverviewView(APIView):
 
         data = {
             "revenue": {
-                "total": float(delivered.aggregate(s=Sum('total'))['s'] or 0),
+                "total": float(delivered.aggregate(
+                    s=Sum('total'))['s'] or 0),
                 "today": float(delivered.filter(
                     delivered_at__gte=today_start).aggregate(
                     s=Sum('total'))['s'] or 0),
@@ -65,15 +93,18 @@ class AdminOverviewView(APIView):
             },
             "orders": {
                 "total": orders.count(),
-                "today": orders.filter(placed_at__gte=today_start).count(),
+                "today": orders.filter(
+                    placed_at__gte=today_start).count(),
                 "pending": orders.filter(status='pending').count(),
                 "delivered": delivered.count(),
                 "cancelled": orders.filter(status='cancelled').count(),
                 "by_status": dict(
-                    Order.objects.values_list('status').annotate(c=Count('id'))),
+                    Order.objects.values_list('status').annotate(
+                        c=Count('id'))),
             },
             "customers": {
-                "total": CustomUser.objects.filter(role='customer').count(),
+                "total": CustomUser.objects.filter(
+                    role='customer').count(),
                 "active": CustomUser.objects.filter(
                     role='customer', is_active=True).count(),
             },
@@ -86,7 +117,8 @@ class AdminOverviewView(APIView):
             },
             "riders": {
                 "total": RiderProfile.objects.count(),
-                "online": RiderProfile.objects.filter(is_online=True).count(),
+                "online": RiderProfile.objects.filter(
+                    is_online=True).count(),
                 "pending_documents": RiderDocument.objects.filter(
                     status='pending').count(),
             },
@@ -129,7 +161,8 @@ class AdminOrderDetailView(APIView):
     def get(self, request, pk):
         from apps.orders.serializers import OrderSerializer
         order = get_object_or_404(Order, pk=pk)
-        return success_response("Order details", OrderSerializer(order).data)
+        return success_response(
+            "Order details", OrderSerializer(order).data)
 
 
 class AdminMerchantView(APIView):
@@ -137,12 +170,18 @@ class AdminMerchantView(APIView):
 
     def get(self, request):
         status_filter = request.query_params.get('status')
+        search = request.query_params.get('search')
         qs = MerchantProfile.objects.all()
         if status_filter:
             qs = qs.filter(verification_status=status_filter)
-        from apps.merchant.serializers import MerchantProfileSerializer
+        if search:
+            qs = qs.filter(
+                Q(business_name__icontains=search) |
+                Q(user__email__icontains=search) |
+                Q(manager_name__icontains=search))
         return success_response(
-            "Merchants", MerchantProfileSerializer(qs, many=True).data)
+            "Merchants",
+            MerchantProfileSerializer(qs, many=True).data)
 
     def post(self, request, pk=None):
         if not pk:
@@ -152,12 +191,66 @@ class AdminMerchantView(APIView):
         if action not in ('approve', 'reject'):
             return failure_response("Invalid action")
         merchant.verification_status = (
-            MerchantProfile.VerificationStatus.APPROVED if action == 'approve'
+            MerchantProfile.VerificationStatus.APPROVED
+            if action == 'approve'
             else MerchantProfile.VerificationStatus.REJECTED)
         merchant.save()
         return success_response(
-            f"Merchant {action}d",
-            {"id": merchant.id, "verification_status": merchant.verification_status})
+            f"Merchant {action}d", {
+                "id": merchant.id,
+                "verification_status": merchant.verification_status})
+
+
+class AdminMerchantVerificationView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request, pk=None):
+        if pk:
+            verification = get_object_or_404(MerchantVerification, pk=pk)
+            return success_response(
+                "Verification details",
+                MerchantVerificationAdminSerializer(verification).data)
+
+        status_filter = request.query_params.get('status', 'pending')
+        qs = MerchantVerification.objects.select_related(
+            'merchant', 'merchant__user').all()
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        return success_response(
+            "Verifications",
+            MerchantVerificationAdminSerializer(qs, many=True).data)
+
+    def post(self, request, pk):
+        verification = get_object_or_404(MerchantVerification, pk=pk)
+        action = request.data.get('action')
+
+        if action not in ('approve', 'reject'):
+            return failure_response("Invalid action")
+
+        if action == 'reject':
+            reason = request.data.get('reason', '')
+            if not reason:
+                return failure_response(
+                    "Rejection reason is required")
+            verification.status = 'rejected'
+            verification.rejection_reason = reason
+            verification.merchant.verification_status = 'rejected'
+        else:
+            verification.status = 'approved'
+            verification.rejection_reason = ''
+            verification.merchant.verification_status = 'approved'
+
+        verification.reviewed_by = request.user
+        verification.reviewed_at = timezone.now()
+        verification.save()
+        verification.merchant.save()
+
+        return success_response(
+            f"Verification {action}d", {
+                "id": verification.id,
+                "status": verification.status,
+                "merchant_verification_status":
+                    verification.merchant.verification_status})
 
 
 class AdminRiderView(APIView):
@@ -188,7 +281,8 @@ class AdminRiderView(APIView):
                 {"document_id": doc.id, "status": doc.status})
         if action == 'reject':
             doc = get_object_or_404(
-                RiderDocument, pk=request.data.get('document_id'), rider=rider)
+                RiderDocument, pk=request.data.get('document_id'),
+                rider=rider)
             doc.status = RiderDocument.Status.REJECTED
             doc.rejection_reason = request.data.get('reason', '')
             doc.save()
@@ -202,8 +296,9 @@ class AdminRiderView(APIView):
                 else RiderProfile.VerificationStatus.REJECTED)
             rider.save()
             return success_response(
-                f"Rider {action}d",
-                {"id": rider.id, "verification_status": rider.verification_status})
+                f"Rider {action}d", {
+                    "id": rider.id,
+                    "verification_status": rider.verification_status})
         return failure_response("Invalid action")
 
 
@@ -238,7 +333,8 @@ class AdminAnalyticsView(APIView):
         now = timezone.now()
         days = int(request.query_params.get('days', 7))
         start = now - timedelta(days=days - 1)
-        start = timezone.make_aware(timezone.datetime.combine(start.date(), time.min))
+        start = timezone.make_aware(
+            timezone.datetime.combine(start.date(), time.min))
 
         daily = []
         for i in range(days):
@@ -273,7 +369,8 @@ class AdminReportsView(APIView):
     def get(self, request):
         report_type = request.query_params.get('type', 'summary')
         now = timezone.now()
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_start = now.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0)
         monthly_orders = Order.objects.filter(placed_at__gte=month_start)
         data = {
             "type": report_type,
@@ -301,9 +398,10 @@ class AdminAddRestaurantView(APIView):
             return failure_response("Email required")
         user = CustomUser.objects.filter(email=email).first()
         if not user:
-            return failure_response("User not found. Register merchant first")
-        merchant, created = MerchantProfile.objects.get_or_create(user=user)
-        from apps.merchant.serializers import MerchantProfileSerializer
+            return failure_response(
+                "User not found. Register merchant first")
+        merchant, created = MerchantProfile.objects.get_or_create(
+            user=user)
         serializer = MerchantProfileSerializer(
             merchant, data=request.data, partial=True)
         if serializer.is_valid():
@@ -312,8 +410,10 @@ class AdminAddRestaurantView(APIView):
                 MerchantProfile.VerificationStatus.APPROVED
             merchant.save()
             return success_response(
-                "Restaurant added", MerchantProfileSerializer(merchant).data,
-                status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+                "Restaurant added",
+                MerchantProfileSerializer(merchant).data,
+                status.HTTP_201_CREATED if created
+                else status.HTTP_200_OK)
         return failure_response("Invalid data", serializer.errors)
 
 
@@ -326,7 +426,8 @@ class AdminInviteRiderView(APIView):
             return failure_response("Email required")
         user = CustomUser.objects.filter(email=email).first()
         if not user:
-            return failure_response("User not found. Register rider first")
+            return failure_response(
+                "User not found. Register rider first")
         rider, created = RiderProfile.objects.get_or_create(user=user)
         from apps.rider.serializers import RiderProfileSerializer
         serializer = RiderProfileSerializer(
@@ -335,5 +436,6 @@ class AdminInviteRiderView(APIView):
             serializer.save()
             return success_response(
                 "Rider invited", RiderProfileSerializer(rider).data,
-                status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+                status.HTTP_201_CREATED if created
+                else status.HTTP_200_OK)
         return failure_response("Invalid data", serializer.errors)

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ChatMessage
+from .models import SupportTicket, ChatMessage
 from django.conf import settings
 from django.contrib.auth import get_user_model
 
@@ -10,11 +10,35 @@ class UserSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Set the model in the __init__ method
         if self.Meta.model is None:
             self.Meta.model = get_user_model()
             self.Meta.fields = ["id", "first_name",
                 "last_name", "username", "email", "photo"]
+
+
+class SupportTicketSerializer(serializers.ModelSerializer):
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    message_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SupportTicket
+        fields = ['id', 'user', 'user_email', 'subject', 'description',
+                  'status', 'priority', 'assigned_to', 'message_count',
+                  'created_at', 'updated_at']
+        read_only_fields = ['user', 'created_at', 'updated_at']
+
+    def get_message_count(self, obj):
+        return obj.messages.count()
+
+
+class SupportTicketCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SupportTicket
+        fields = ['id', 'subject', 'description', 'priority']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
 
 
 class ChatMessageSerializer(serializers.ModelSerializer):
@@ -27,8 +51,9 @@ class ChatMessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ChatMessage
-        fields = ["id", "sender", "receiver", "sender_username", "receiver_username",
-            "sender_photo", "receiver_photo", "message", "timestamp", "is_read"]
+        fields = ["id", "sender", "receiver", "sender_username",
+                  "receiver_username", "sender_photo", "receiver_photo",
+                  "message", "ticket", "timestamp", "is_read"]
 
     def get_sender_username(self, obj):
         return obj.sender.username
@@ -58,13 +83,14 @@ class ChatUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "first_name", "last_name", "photo",  "username",  "all_messages_read", "total_unread_messages"]
+        fields = ["id", "first_name", "last_name", "photo",
+                  "username", "all_messages_read",
+                  "total_unread_messages"]
 
     def get_all_messages_read(self, obj):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
-            return True  # default
-
+            return True
         return not ChatMessage.objects.filter(
             sender=obj, receiver=request.user, is_read=False
         ).exists()
@@ -73,7 +99,6 @@ class ChatUserSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return 0
-
         return ChatMessage.objects.filter(
             sender=obj, receiver=request.user, is_read=False
         ).count()

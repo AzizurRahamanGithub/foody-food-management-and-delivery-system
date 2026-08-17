@@ -13,3 +13,4 @@ test.py
 /node_modules
 staticfiles/
 .ruff_cache
+config.bat
