@@ -4,7 +4,7 @@ from .views import (
      LoginView, ProtectedView,
     LogoutView, GetNewAccessTokenView, ForgotPasswordView, PasswordChangeView, ResetPasswordView, ProfileView,  GoogleOauth, ResendVerificationEmailAPIView, DetailSingleProfile, AdminUserView
 )
-from .views import   ResendOTPAPIView, UserAPIView, UserDetailAPIView, RegisterAPIView,ContactMessageView, HelpUsImproveView
+from .views import   ResendOTPAPIView, UserAPIView, UserDetailAPIView, RegisterAPIView,ContactMessageView, HelpUsImproveView, SendPhoneOTPAPIView, VerifyPhoneOTPAPIView, VerifyResetPasswordView
 
 router = DefaultRouter()
 router.register(r'help-us-improve', HelpUsImproveView, basename='improving'),
@@ -17,6 +17,8 @@ urlpatterns = [
      path('test-mail/', TestMailView.as_view(), name='test-mail'),
      # --- register
     path("register/", RegisterAPIView.as_view(), name="register"),
+    path("send-otp/", SendPhoneOTPAPIView.as_view(), name="send-otp"),
+    path("verify-otp/", VerifyPhoneOTPAPIView.as_view(), name="verify-otp"),
     path("resend-otp/", ResendOTPAPIView.as_view(), name="resend-otp"),     
      
      # --- login and logout
@@ -34,6 +36,7 @@ urlpatterns = [
 
     # --forgot_password
     path('forgot-password/', ForgotPasswordView.as_view(), name='forgot_password'),
+    path('reset-password-otp/', VerifyResetPasswordView.as_view(), name='reset_password_otp'),
     path('reset-password/<uidb64>/<token>/', ResetPasswordView.as_view(), name='reset_password'),
 
     # ---- google auth

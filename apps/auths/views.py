@@ -20,11 +20,12 @@ from rest_framework.generics import RetrieveUpdateAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import UserProfile, HelpUsImprove, CustomUser
+from .models import UserProfile, HelpUsImprove, CustomUser, PhoneVerification
 from rest_framework import viewsets, permissions
 from .serializers import (
     UserRegisterSerializer, LoginSerializer, UserSerializer,
-    ForgotPasswordSerializer, ResetPasswordSerializer, PasswordChangeSerializer, CustomUserAllSerializer, ContactMessageSerializer, HelpUsImproveSerializer, AdminUserSerializer
+    ForgotPasswordSerializer, ResetPasswordSerializer, PasswordChangeSerializer, CustomUserAllSerializer, ContactMessageSerializer, HelpUsImproveSerializer, AdminUserSerializer,
+    SendPhoneOTPSerializer, VerifyPhoneOTPSerializer, VerifyResetOTPSerializer
 )
 from .tokens import email_activation_token
 from rest_framework.authentication import TokenAuthentication
@@ -39,6 +40,7 @@ from django.core.mail import send_mail
 from ..core.crud import DynamicModelViewSet
 
 from apps.notification.utils import notify_admins
+from .sms import send_sms
 
 
 BASE_URL = os.getenv('BASE_URL')
@@ -55,7 +57,18 @@ class RegisterAPIView(APIView):
         try:
             serializer = UserRegisterSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
+
+            phone_number = serializer.validated_data.get("phone_number")
+            if not PhoneVerification.objects.filter(
+                    phone_number=phone_number, is_verified=True).exists():
+                return failure_response(
+                    "Phone number is not verified. Please verify your phone number with an OTP first.",
+                    {"phone_number": "Unverified phone number."})
+
             user = serializer.save()
+
+            PhoneVerification.objects.filter(
+                phone_number=user.phone_number).delete()
             
             # Notify admins only
             notify_admins(
@@ -70,6 +83,51 @@ class RegisterAPIView(APIView):
         
         except Exception as e:
             return failure_response("An error occurred", error= str(e), status= status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class SendPhoneOTPAPIView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = SendPhoneOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        phone_number = serializer.validated_data["phone_number"]
+
+        if CustomUser.objects.filter(phone_number=phone_number).exists():
+            return failure_response("This phone number is already registered. Please login instead.")
+
+        verification, created = PhoneVerification.objects.get_or_create(
+            phone_number=phone_number)
+
+        if not created and not verification.can_resend():
+            return failure_response("Please wait a moment before requesting a new OTP.")
+
+        otp = verification.generate_otp()
+        verification.save()
+
+        message = f"Your verification OTP is {otp}. Do not share it with anyone."
+        send_sms(phone_number, message)
+
+        return success_response("OTP sent successfully. Please check your phone for the verification code.", {
+            "phone_number": phone_number,
+            "otp": otp,
+            "note": "OTP is returned for testing purposes only."
+        })
+
+
+class VerifyPhoneOTPAPIView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = VerifyPhoneOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        return success_response("Phone number verified successfully.", {
+            "phone_number": serializer.validated_data["phone_number"],
+        })
 
 
 class DetailSingleProfile(RetrieveAPIView):
@@ -103,6 +161,9 @@ class ProfileView(RetrieveUpdateAPIView):
         serializer = self.get_serializer(
             instance, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
+        new_phone = serializer.validated_data.get('phone_number')
+        if new_phone and new_phone != instance.phone_number:
+            instance.is_phone_verified = False
         self.perform_update(serializer)
 
         return success_response("Profile updated successfully", serializer.data)
@@ -420,16 +481,50 @@ class PasswordChangeView(APIView):
 
 class ForgotPasswordView(APIView):
     """
-    Send password reset link to user's email
+    Send password reset link to user's email OR an OTP to user's phone.
     """
 
     def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        email = serializer.validated_data["email"]  
+        email = serializer.validated_data.get("email")
+        phone_number = serializer.validated_data.get("phone_number")
+
+        # Phone-based reset: send OTP via SMS
+        if phone_number:
+            try:
+                user = User.objects.get(phone_number=phone_number)
+            except User.DoesNotExist:
+                return failure_response(
+                    "User with this phone number does not exist.",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            verification, created = PhoneVerification.objects.get_or_create(
+                phone_number=phone_number)
+            if not created and not verification.can_resend():
+                return failure_response("Please wait a moment before requesting a new OTP.")
+
+            otp = verification.generate_otp()
+            verification.save()
+
+            send_sms(
+                phone_number,
+                f"Your password reset OTP is {otp}. Do not share it with anyone."
+            )
+
+            return success_response(
+                "Password reset OTP sent to your phone number.",
+                {"phone_number": phone_number,
+                 "otp": otp,
+                 "note": "OTP is returned for testing purposes only."},
+                status=status.HTTP_200_OK
+            )
+
+        # Email-based reset: send reset link
         try:
-            user = User.objects.get(email=email)
+            user = User.objects.get(email__iexact=email)
         except User.DoesNotExist:
             return failure_response(
                 "User with this email does not exist.",
@@ -460,6 +555,31 @@ class ForgotPasswordView(APIView):
              },
             status=status.HTTP_200_OK
         )
+
+
+class VerifyResetPasswordView(APIView):
+    """Reset password for phone-based forgot password flow."""
+
+    def post(self, request):
+        serializer = VerifyResetOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        phone_number = serializer.validated_data["phone_number"]
+
+        try:
+            user = User.objects.get(phone_number=phone_number)
+        except User.DoesNotExist:
+            return failure_response(
+                "User with this phone number does not exist.",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        user.set_password(serializer.validated_data["new_password"])
+        user.save()
+
+        PhoneVerification.objects.filter(phone_number=phone_number).delete()
+
+        return success_response("Password has been reset successfully. You can now login.")
 
 
 class ResetPasswordView(APIView):

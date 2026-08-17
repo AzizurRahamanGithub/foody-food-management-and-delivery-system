@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import CustomUser, UserProfile, HelpUsImprove, ContactMessage
+from .models import CustomUser, UserProfile, HelpUsImprove, ContactMessage, PhoneVerification
 from django.utils import timezone
 
 from django.contrib import admin
@@ -12,19 +12,19 @@ from django.utils.translation import gettext_lazy as _
 
 class CustomUserAdmin(UserAdmin):
     model = CustomUser
-    list_display = ('email', 'username', 'first_name', 'last_name', 'role', 'is_active', 'is_staff', 'is_superuser')
-    list_filter = ('role', 'is_active', 'is_staff')
-    search_fields = ('email', 'username', 'first_name', 'last_name', 'phone_number')
+    list_display = ('phone_number', 'email', 'username', 'full_name', 'role', 'is_phone_verified', 'is_active', 'is_staff', 'is_superuser')
+    list_filter = ('role', 'is_phone_verified', 'is_active', 'is_staff')
+    search_fields = ('email', 'username', 'first_name', 'last_name', 'phone_number', 'full_name')
     ordering = ('email',)
     fieldsets = (
         (None, {'fields': ('email', 'username', 'password')}),
-        ('Personal info', {'fields': ('full_name','first_name', 'last_name', 'role', 'phone_number', 'address', 'photo')}),
+        ('Personal info', {'fields': ('full_name','first_name', 'last_name', 'role', 'phone_number', 'is_phone_verified', 'address', 'photo')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
     )
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'username', 'password1', 'password2', 'role', 'is_active')}
+            'fields': ('email', 'username', 'password1', 'password2', 'role', 'phone_number', 'is_active')}
         ),
     )
 
@@ -110,6 +110,15 @@ class HelpUsImproveAdmin(admin.ModelAdmin):
 # class UserProfileAdmin(admin.ModelAdmin):
 #     list_display = ('user', 'otp', 'otp_created_at', 'reset_token', 'reset_token_expires')
 #     search_fields = ('user__email', 'user__username')
+
+
+@admin.register(PhoneVerification)
+class PhoneVerificationAdmin(admin.ModelAdmin):
+    list_display = ('phone_number', 'otp', 'is_verified', 'attempts', 'otp_created_at')
+    search_fields = ('phone_number',)
+    list_filter = ('is_verified', 'otp_created_at')
+    readonly_fields = ('otp_created_at',)
+    list_per_page = 25
 
 
 

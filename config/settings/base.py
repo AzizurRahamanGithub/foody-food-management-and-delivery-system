@@ -204,6 +204,13 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')   # "Putt putt play <Juan@puttputtplay.com>"
 CONTACT_EMAIL = os.getenv('CONTACT_EMAIL')  
 
+# SMS gateway configuration (Twilio - works internationally)
+TWILIO_ENABLED = os.getenv('TWILIO_ENABLED', 'true').lower() in ('true', '1', 'yes')
+TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID', '')
+TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN', '')
+TWILIO_FROM_NUMBER = os.getenv('TWILIO_FROM_NUMBER', '')
+
+
 
 # Django REST Framework configuration
 REST_FRAMEWORK = {
@@ -217,7 +224,11 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
     'EXCEPTION_HANDLER': 'apps.core.utils.custom_exception_handler.custom_exception_handler',
-    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend']
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ]
 }
 
 # Simple JWT configuration

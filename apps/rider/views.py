@@ -176,6 +176,13 @@ class ConfirmPickupView(APIView):
             note="Items picked up by rider")
         from apps.orders.tracking import broadcast_order_update
         broadcast_order_update(order, event_type='order_picked_up')
+
+        from apps.notification.utils import notify_out_for_delivery
+        rider_name = (request.user.full_name
+                      or request.user.email)
+        notify_out_for_delivery(
+            order.customer, order, rider_name=rider_name)
+
         return success_response(
             "Pickup confirmed", DeliveryTaskSerializer(task).data)
 
@@ -210,6 +217,11 @@ class MarkDeliveredView(APIView):
 
         from apps.orders.tracking import broadcast_order_update
         broadcast_order_update(order, event_type='order_delivered')
+
+        from apps.notification.utils import (
+            notify_order_delivered, notify_rate_order)
+        notify_order_delivered(order.customer, order)
+        notify_rate_order(order.customer, order)
 
         return success_response(
             "Order delivered", DeliveryTaskSerializer(task).data)
